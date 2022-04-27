@@ -7,29 +7,6 @@
 		(def-value)
 		(expand (local.value) (local.vars))))
 
-(def-fn rcopy source target
-
-	(set tmp (dir::entries:recursive (source)))
-
-	(set files (pipe
-		(tmp.files)
-		(map _ (substr (len (source)) (i.path)))
-	))
-
-	(set dirs (pipe
-		(tmp.dirs)
-		(map _ (substr (len (source)) (i.path)))
-	))
-
-	(for (dirs)
-		(dir::create "(target)(i)"))
-
-	(for (files)
-		(file::copy "(source)(i)" "(target)(i)"))
-
-	(& files (files.length) dirs (dirs.length))
-)
-
 (def-fn interpret
 
 	(switch (upper (local.x.1))
@@ -71,9 +48,8 @@
 		case DEL
 			(file::remove (val ""))
 
-		case RCOPY
-			(set value (rcopy (local.vars.r0) (val null)))
-			(echo "- Copied (value.files) files, (value.dirs) dirs")
+		case DIRCOPY
+			(set value (dir::copy (local.vars.r0) (val null)))
 
 		case REPLACE
 			(set value (val null))
@@ -109,7 +85,16 @@
 	cwd (#)
 ))
 
-(path::chdir (path::dirname (args.0)))
+(when (not (args.1))
+	(echo "Use: rose :deploy <directory>")
+	(stop))
+
+(set src (path::resolve (args.1)))
+
+(when-not (path::exists (src))
+	(throw "Source path `(args.1)` not found."))
+
+(path::chdir (src))
 
 (when-not (path::exists ".deploy")
 	(throw "Deployment file `.deploy` not found."))
