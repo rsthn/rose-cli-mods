@@ -194,7 +194,7 @@
 catch
 	(switch (err)
 		case "@STOP"
-		default throw "line (lineno): (err)")
+		default (throw "line (lineno): (err)")
 	)
 )
 
