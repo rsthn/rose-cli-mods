@@ -88,7 +88,7 @@
 
 		case READ
 			(set value (val null))
-			(set (local.vars.r0) (file::read (value)))
+			(set local.vars.r0 (file::read (value)))
 
 		case WRITE
 			(set value (val null))
