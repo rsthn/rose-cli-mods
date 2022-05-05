@@ -79,7 +79,7 @@
 		case DIRCOPY
 			(dir::copy (local.vars.r0) (val null))
 
-		case FILECOPY
+		case COPY
 			(file::copy (local.vars.r0) (val null))
 
 		case REPLACE
