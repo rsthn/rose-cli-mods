@@ -1,15 +1,43 @@
+;
+;	Deployment Utility
+;
+;	Copyright (c) 2022-2023, RedStar Technologies, All rights reserved.
+;	https://rsthn.com/
+;
+;	THIS UTILITY IS PROVIDED BY REDSTAR TECHNOLOGIES "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+;	INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+;	PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL REDSTAR TECHNOLOGIES BE LIABLE FOR ANY
+;	DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+;	NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+;	OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+;	STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+;	USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+;
 
+; Local variables.
+(set vars (&
+	storage (&)
+	cwd (#)
+))
+
+(set state (# DEF))
+(set lineno 0)
+(set value "")
+
+; Returns an ANSI escape sequence for the specified color code.
 (def-fn clr value
 	"\x1B[(value)m")
 
+; Expands the `value` variable of the local scope, returns `def-value` if `value` is empty.
 (def-fn val def-value
 	(? (eq "" (local.value))
 		(def-value)
 		(expand (local.value) (local.vars))))
 
-(def-fn interpret
+; Interprets a command.
+(def-fn interpret cmd
 
-	(switch (upper (local.x.1))
+	(switch (upper (cmd))
 
 		case ECHO
 			(echo (val ""))
@@ -49,15 +77,26 @@
 			(file::remove (val ""))
 
 		case DIRCOPY
-			(set value (dir::copy (local.vars.r0) (val null)))
+			(dir::copy (local.vars.r0) (val null))
+
+		case FILECOPY
+			(file::copy (local.vars.r0) (val null))
 
 		case REPLACE
 			(set value (val null))
 			(file::write (value) (replace (local.vars.r0) (local.vars.r1) (file::read (value))))
 
+		case READ
+			(set value (val null))
+			(set (local.vars.r0) (file::read (value)))
+
 		case WRITE
 			(set value (val null))
 			(file::write (value) (local.vars.r0))
+
+		case APPEND
+			(set value (val null))
+			(file::append (value) (local.vars.r0))
 
 		case STOP
 			(throw "@STOP")
@@ -76,61 +115,58 @@
 			(throw "Unexpected END-IF, current state: (array::last (local.state))")
 
 		default
-			(set local.vars.(local.x.1) (val ""))
+			(set local.vars.(cmd) (val ""))
 	)
 )
 
-(set vars (&
-	storage (&)
-	cwd (#)
-))
-
+; Entry point.
 (when (not (args.1))
 	(echo "Use: rose :deploy <directory>")
 	(stop))
 
+; Determine if source path exists.
 (set src (path::resolve (args.1)))
 
 (when-not (path::exists (src))
 	(throw "Source path `(args.1)` not found."))
 
+; Change directory to `src` and check if the `.deploy` file exists.
 (path::chdir (src))
 
 (when-not (path::exists ".deploy")
 	(throw "Deployment file `.deploy` not found."))
-
-(set state (# DEF))
-(set lineno 0)
 
 (try
 	(for line (trim (split "\n" (file::read ".deploy")))
 
 		(inc lineno)
 
-		(when (or (eq '' (line)) (starts-with "#" (line)))
+		(when (or (eq "" (line)) (starts-with "#" (line)))
 			(continue))
 
 		(set x (re::match `/^(.+?)(\s.+)?$/` (line)))
+
+		(set cmd (x.1))
 		(set value (trim (x.2)))
 
 		(switch (array::last (state))
 
 			case DEF
-				(interpret)
+				(interpret (cmd))
 
 			case EXEC-IF
-				(switch (upper (x.1))
+				(switch (upper (cmd))
 					case ELSE
 						(array::pop (state))
 						(array::push (state) FIND-END-IF)
 					case END-IF
 						(array::pop (state))
 					default
-						(interpret)
+						(interpret (cmd))
 				)
 
 			case FIND-ELSE
-				(switch (upper (x.1))
+				(switch (upper (cmd))
 					case IF
 						(array::push (state) FIND-END-IF)
 					case ELIF
@@ -146,7 +182,7 @@
 				)
 
 			case FIND-END-IF
-				(switch (upper (x.1))
+				(switch (upper (cmd))
 					case IF
 						(array::push (state) FIND-END-IF)
 					case END-IF
