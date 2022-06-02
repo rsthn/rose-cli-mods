@@ -121,23 +121,30 @@
 
 ; Entry point.
 (when (not (args.1))
-	(echo "Use: rose :deploy <directory>")
+	(echo "Use: rose :deploy <directory|deployment-file>")
 	(stop))
 
 ; Determine if source path exists.
 (set src (path::resolve (args.1)))
+(set srcFile ".deploy")
 
 (when-not (path::exists (src))
 	(throw "Source path `(args.1)` not found."))
 
-; Change directory to `src` and check if the `.deploy` file exists.
+; Using deployment file.
+(if (path::is_file (src))
+	(set srcFile (path::basename (src)))
+	(set src (path::dirname (src)))
+)
+
+; Change directory to `src` and check if the deployment file exists.
 (path::chdir (src))
 
-(when-not (path::exists ".deploy")
-	(throw "Deployment file `.deploy` not found."))
+(when-not (path::exists (srcFile))
+	(throw "Deployment file `(srcFile)` not found."))
 
 (try
-	(for line (trim (split "\n" (file::read ".deploy")))
+	(for line (trim (split "\n" (file::read (srcFile))))
 
 		(inc lineno)
 
