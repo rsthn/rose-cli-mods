@@ -73,11 +73,18 @@
 		case RMDIR
 			(dir::remove (val null) true)
 
+		case CLEAN
+			(for i (dir::files (val null))
+                (file::remove (i.path)))
+
 		case DEL
 			(file::remove (val ""))
 
 		case DIRCOPY
 			(dir::copy (local.vars.r0) (val null))
+
+		case DIRCOPY:FILES
+			(dir::copy (local.vars.r0) (val null) false)
 
 		case COPY
 			(file::copy (local.vars.r0) (val null))
