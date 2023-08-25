@@ -42,6 +42,9 @@
 		case ECHO
 			(echo (val ""))
 
+		case PUTENV
+			(utils::putenv (val ""))
+
 		case LOAD:STRICT
 			(set value (val ".config"))
 			(when-not (path::exists (value)) (throw "Input file (value) not found."))
