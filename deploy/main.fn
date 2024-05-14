@@ -1,5 +1,5 @@
 ;;
-;;	Deployment Utility
+;;  Deployment Utility
 ;;
 
 ;; Local variables.
@@ -49,6 +49,11 @@
 
         case EXEC
             (set local.vars.errorlevel (sys:exec (val "")))
+
+        case RUN
+            (set errorlevel (sys:exec (val "")))
+            (ne? 0 (errorlevel)
+                (throw "Command failed with exit code: (errorlevel)"))
 
         case SHELL
             (set local.vars.shell (sys:shell (val "")))
@@ -124,90 +129,91 @@
     )
 )
 
+;; Executes a deployment file.
+(def-fn execute srcFile
+
+    (set src (path:resolve (srcFile)))
+    (when-not (path:exists (src))
+        (throw "Source file not found: (srcFile)"))
+
+    (set srcFile (path:basename (src)))
+    (set src (path:dirname (src)))
+    (path:chdir (src))
+
+    (try
+        (for line (map line (split "\n" (file:read (srcFile))) (trim (line)))
+
+            (inc local.lineno)
+
+            (when (or (eq? "" (line)) (starts-with? "#" (line)))
+                (continue))
+
+            (set x (re:match `/^(.+?)(\s.+)?$/` (line)))
+
+            (set cmd (x.1))
+            (set local.value (trim (x.2)))
+
+            (switch (array:last (local.state))
+
+                case "DEF"
+                    (interpret (cmd))
+
+                case "EXEC-IF"
+                    (switch (upper (cmd))
+                        case "ELSE"
+                            (array:pop (local.state))
+                            (array:push (local.state) "FIND-END-IF")
+                        case "END-IF"
+                            (array:pop (local.state))
+                        default
+                            (interpret (cmd))
+                    )
+
+                case "FIND-ELSE"
+                    (switch (upper (cmd))
+                        case "IF"
+                            (array:push (local.state) "FIND-END-IF")
+                        case "ELIF"
+                            (if (val false)
+                                (array:pop (local.state))
+                                (array:push (local.state) "EXEC-IF")
+                            )
+                        case "ELSE"
+                            (array:pop (local.state))
+                            (array:push (local.state) "EXEC-IF")
+                        case "END-IF"
+                            (array:pop (local.state))
+                    )
+
+                case "FIND-END-IF"
+                    (switch (upper (cmd))
+                        case "IF"
+                            (array:push (local.state) "FIND-END-IF")
+                        case "END-IF"
+                            (array:pop (local.state))
+                    )
+            )
+        )
+
+    catch
+        (switch (err)
+            case "@STOP"
+            default (throw "line (local.lineno): (err)")
+        )
+    )
+)
+
 ;; Entry point.
 (when (not (args.1))
     (echo "Use: rose :deploy <directory|deployment-file>")
     (stop))
 
-;; Determine if source path exists.
 (set src (path:resolve (args.1)))
-(set srcFile ".deploy")
-
 (when-not (path:exists (src))
-    (throw "Source path `(args.1)` not found."))
+    (throw "Source path not found: (args.1)"))
 
-;; Using deployment file.
-(if (path:is-file (src))
-    (set srcFile (path:basename (src)))
-    (set src (path:dirname (src)))
-)
+(when (path:is-dir (src))
+    (set src (path:append (src) ".deploy")))
 
-;; Change directory to `src` and check if the deployment file exists.
-(path:chdir (src))
-
-(when-not (path:exists (srcFile))
-    (throw "Deployment file `(srcFile)` not found."))
-
-(try
-    (for line (map val (split "\n" (file:read (srcFile))) (trim (val)))
-
-        (inc lineno)
-
-        (when (or (eq? "" (line)) (starts-with? "#" (line)))
-            (continue))
-
-        (set x (re:match `/^(.+?)(\s.+)?$/` (line)))
-
-        (set cmd (x.1))
-        (set value (trim (x.2)))
-
-        (switch (array:last (state))
-
-            case "DEF"
-                (interpret (cmd))
-
-            case "EXEC-IF"
-                (switch (upper (cmd))
-                    case "ELSE"
-                        (array:pop (state))
-                        (array:push (state) "FIND-END-IF")
-                    case "END-IF"
-                        (array:pop (state))
-                    default
-                        (interpret (cmd))
-                )
-
-            case "FIND-ELSE"
-                (switch (upper (cmd))
-                    case "IF"
-                        (array:push (state) "FIND-END-IF")
-                    case "ELIF"
-                        (if (val false)
-                            (array:pop (state))
-                            (array:push (state) "EXEC-IF")
-                        )
-                    case "ELSE"
-                        (array:pop (state))
-                        (array:push (state) "EXEC-IF")
-                    case "END-IF"
-                        (array:pop (state))
-                )
-
-            case "FIND-END-IF"
-                (switch (upper (cmd))
-                    case "IF"
-                        (array:push (state) "FIND-END-IF")
-                    case "END-IF"
-                        (array:pop (state))
-                )
-        )
-    )
-
-catch
-    (switch (err)
-        case "@STOP"
-        default (throw "line (lineno): (err)")
-    )
-)
-
-(null)
+(execute (src))
+(stop)
