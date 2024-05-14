@@ -1,0 +1,168 @@
+;; Escapes a value to be used in HTML elements.
+(def-fn escape value
+    (str:replace "<" "\<" (value))
+)
+
+;; Removes empty lines from the beginning and end of the array.
+(def-fn cleanup lines
+
+    (when-not (len (lines))
+        (ret (lines)))
+
+    (while (eq? (array:first (lines)) "")
+        (array:shift (lines)))
+
+    (while (eq? (array:last (lines)) "")
+        (array:pop (lines)))
+
+    (lines)
+)
+
+;; Returns formatted documentation for doc-strings in a given file.
+(def-fn getDocumentation filePath add_title=true add_desc=true add_back_link=true
+
+    (set fileData (file:read (filePath)))
+    (set doc "")
+
+    (set title (re:match "/@title \(?P<value>.+\)/" (fileData)))
+    (when-not (title.value)
+        (ret null))
+
+    (set short (re:match "/@short \(?P<value>.+\)/" (fileData)))
+    (set short (? (short.value) (short.value) (title.value)))
+
+    (set desc (re:match "/@desc \(?P<value>.+\)/" (fileData)))
+
+    (when (add_back_link)
+        (append doc "[&laquo; Go Back]\(./README.md\)\n"))
+
+    (when (add_title)
+        (append doc "# (title.value)\n"))
+
+    (when (and (add_desc) (desc))
+        (append doc "(desc.value)\n"))
+
+    (for match (filter match (re:match-all "/\/\*\*.+?\*\//s" (fileData)) (in? (match) "@code"))
+
+        ;; Remove first and last lines.
+        (set lines (array:slice 1 -1 (split "\n" (match))))
+
+        (set meta (& 
+            "code" (#)
+            "example" (#)
+            "text" (#)
+        ))
+
+        (set target (meta.text))
+
+        ;; Grab special annotations and clean up each line.
+        (for line (lines)
+            (set value (substr 3 (line)))
+
+            (when (starts-with? "@code" (value))
+                (set target (meta.code))
+                (array:push (target) (substr 6 (value)))
+                (continue)
+            )
+
+            (when (starts-with? "@example" (value))
+                (set target (meta.example))
+                (array:push (target) (substr 9 (value)))
+                (continue)
+            )
+
+            (array:push (target) (value))
+        )
+
+        (set meta.text (cleanup (meta.text)))
+        (set meta.example (cleanup (meta.example)))
+
+        ;; Write formatted documentation.
+        (set output (concat "\n### " (join "<br/>" (map x (meta.code) (escape (x)))) "\n"))
+
+        (set br "")
+        (for line (meta.text)
+            (append output "(br)(escape (line))\n")
+            (when (ends-with? "." (line))
+                (set br "<br/>"))
+        )
+
+        (when (len (meta.example))
+            (append output "\`\`\`lisp\n")
+            (for line (meta.example)
+                (append output "(line)\n")
+            )
+            (append output "\`\`\`\n")
+        )
+
+        (append doc (output))
+    )
+
+    (# (title.value) (short) (doc))
+)
+
+;; Entry point.
+(when (not (args.1))
+    (print "Use: rose :vdocs <directory|file>")
+    (stop))
+
+(set src (path:resolve (args.1)))
+(when-not (path:exists (src))
+    (throw "Source path not found: (args.1)"))
+
+;; Process entire folder.
+(when (path:is-dir (src))
+
+    (set names (&))
+
+    (for file (dir:files-recursive (src) "/\.php$/")
+        (set info (getDocumentation (file.path)))
+        (when-not (info)
+            (continue))
+
+        (echo "✔ (info.0)")
+        (file:write "./docs/(info.1).md" (info.2))
+
+        (map:set (names) (info.1) (info.0))
+    )
+
+    (file:remove "./docs/README.md")
+
+    (set output "# Functions\n")
+    (for file (dir:files-recursive "./docs/")
+        (set name (array:last (split "-" (path:name (file.name)))))
+
+        (when (in? (names) (name))
+            (set name (map:get (names) (name))))
+
+        (append output "- [(name)]\(./(file.name)\)\n")
+    )
+
+    (file:write "./docs/README.md" (output))
+    (print "\e[32m* Documentation updated\e[0m")
+    (stop)
+)
+
+;; Process single file.
+
+(set is_full (eq? "--overwrite" (array:last (args))))
+
+(set info (getDocumentation (src) (is_full) (is_full) false))
+(when-not (info)
+    (print "\e[33mNo documentation found\e[0m")
+    (stop)
+)
+
+(set filename "README.md")
+(set data "")
+
+(when-not (is_full)
+    (set data (file:read (filename)))
+    (set data (re:replace "/# Functions.*/s" "" (data)))
+    (append data "# Functions\n")
+)
+
+(append data (info.2))
+(file:write (filename) (data))
+
+(print "\e[32m* Documentation updated\e[0m")
