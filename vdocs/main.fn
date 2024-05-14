@@ -139,7 +139,7 @@
     )
 
     (file:write "./docs/README.md" (output))
-    (print "\e[32m* Documentation updated\e[0m")
+    (print "✔ Documentation updated")
     (stop)
 )
 
@@ -149,7 +149,7 @@
 
 (set info (getDocumentation (src) (is_full) (is_full) false))
 (when-not (info)
-    (print "\e[33mNo documentation found\e[0m")
+    (print "\e[33m* No documentation found\e[0m")
     (stop)
 )
 
@@ -165,4 +165,4 @@
 (append data (info.2))
 (file:write (filename) (data))
 
-(print "\e[32m* Documentation updated\e[0m")
+(print "✔ Documentation updated")
