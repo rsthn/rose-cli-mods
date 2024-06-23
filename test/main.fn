@@ -173,8 +173,8 @@
     (include (path:resolve (filepath)))
     (set failed (test:run))
     (when (failed)
-        (echo "")
-        (throw (concat "💀 (failed) test" (gt? (failed) 1 "s" "")  " failed"))
+        (echo (concat "\n\x1B[95mError:\x1B[0m 💀 (failed) test" (gt? (failed) 1 "s" "")  " failed"))
+        (sys:exit 1)
     )
 )
 
