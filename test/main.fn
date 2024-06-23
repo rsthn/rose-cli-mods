@@ -1,0 +1,181 @@
+
+(def-fn mock:create function_name return_value=null
+    (set data {
+        name (function_name)
+        calls []
+        return_value (return_value)
+        callback (fn &params
+            (array:push (self.data.calls) (params))
+            (self.data.return_value)
+        )
+    })
+
+    (set data.old_callback (get-fn (function_name)))
+    (set-fn (function_name) (data.callback))
+    (data)
+)
+
+(def-fn mock:destroy mock
+    (set-fn (mock.name) (mock.old_callback))
+)
+
+(def-fn expect:error message callback
+    (try
+        ((callback))
+        (set err "None")
+    )
+    (assert (eq? (err) (message)) "\nexpected: (message)\nresult:   (err)")
+)
+
+(def-fn expect:called-once mock
+    (assert (eq? (len (mock.calls)) 1)
+        "`(mock.name)` expected to be called once \(hit (len (mock.calls)) times\)")
+)
+
+(def-fn expect:not-called mock
+    (assert (eq? (len (mock.calls)) 0)
+        "`(mock.name)` expected not to be called \(hit (len (mock.calls)) times\)")
+)
+
+(def-fn expect:called mock count
+    (assert (eq? (len (mock.calls)) (count))
+        "`(mock.name)` expected to be called (count) times \(hit (len (mock.calls)) times\)")
+)
+
+(def-fn expect:called-with mock &params
+
+    (set params (map i in (params) (dump (i))))
+
+    (for c (mock.calls)
+        (when-not (eq? (len (c)) (len (params)))
+            (continue))
+
+        (set found true)
+        (for i (params)
+            (when-not (eqq? (i) (dump (c.(i#))))
+                (set found false)
+                (break)
+            )
+        )
+
+        (when (found)
+            (ret))
+    )
+
+    (throw "`(mock.name)` expected to be called with:\n+ [(join , (params))]\n- (dump (mock.calls.0))")
+)
+
+(def-fn expect:zero value message
+    (assert (eqq? 0 (value)) "(message) \(result: (dump (value))\)")
+)
+
+(def-fn expect:true value message
+    (assert (eqq? true (value)) "(message) \(result: (dump (value))\)")
+)
+
+(def-fn expect:false value message
+    (assert (eqq? false (value)) "(message) \(result: (dump (value))\)")
+)
+
+(def-fn expect:int value message
+    (assert (int? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:str value message
+    (assert (str? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:bool value message
+    (assert (bool? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:float value message
+    (assert (float? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:array value message
+    (assert (array? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:object value message
+    (assert (object? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:map value message
+    (assert (map? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn expect:fn value message
+    (assert (fn? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+)
+
+(def-fn test:run
+
+    (set-fn "_def_echo" (get-fn "_echo"))
+    (set-fn "_echo")
+    (def-fn ::echo message
+        (array:push (local.msg_echo) (message)))
+
+    (set-fn "_def_print" (get-fn "_print"))
+    (set-fn "_print")
+    (def-fn ::print message
+        (array:push (local.msg_print) (message)))
+
+    (set-fn "_def_trace" (get-fn "_trace"))
+    (set-fn "_trace")
+    (def-fn ::trace message
+        (array:push (local.msg_trace) (message)))
+
+    (set errors 0)
+    (for func in (debug:fn "test_")
+        (try
+            (set local.msg_echo (#))
+            (set local.msg_trace (#))
+            (def_print "(func) ... ")
+            ((func))
+            (def_print "🟢\n")
+
+        catch
+            (def_print "🔴 \x1B[31m(err)\x1B[0m\n")
+            (inc errors)
+
+            (when (len (local.msg_echo))
+                (for msg in (local.msg_echo)
+                    (def_echo "\x1B[97m(msg)\x1B[0m"))
+            )
+
+            (when (len (local.msg_trace))
+                (for msg in (local.msg_trace)
+                    (def_echo "\x1B[90m[trace] (msg)\x1B[0m"))
+            )
+        )
+    )
+
+    (set-fn "_echo" (get-fn "_def_echo"))
+    (set-fn "_print" (get-fn "_def_print"))
+    (set-fn "_trace" (get-fn "_def_trace"))
+
+    (errors)
+)
+
+;; *************************************************************
+(when (lt? (args.length) 2)
+    (echo "Use: ")
+    (echo "  :test <test-file>")
+    (stop))
+
+(set filepath (args.1))
+
+(when (and (not (path:exists (filepath))) (path:exists "(filepath).fn"))
+    (append filepath ".fn"))
+
+(when (path:is-file (filepath))
+    (include (path:resolve (filepath)))
+    (set failed (test:run))
+    (when (failed)
+        (echo "")
+        (throw (concat "💀 (failed) test" (gt? (failed) 1 "s" "")  " failed"))
+    )
+)
+
+(throw "Input not found: \x1B[97m(args.1)\x1B[0m")
