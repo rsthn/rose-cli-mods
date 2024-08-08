@@ -65,96 +65,98 @@
     (throw "`(mock.name)` expected to be called with:\n+ [(join , (params))]\n- (dump (mock.calls.0))")
 )
 
-(def-fn expect:zero value message
-    (assert (eqq? 0 (value)) "(message) \(result: (dump (value))\)")
+(def-fn expect:eq value1 value2 message="expected equal"
+    (assert (eq? (value1) (value2)) "(message): (dump (value1)) != (dump (value2))")
 )
 
-(def-fn expect:true value message
-    (assert (eqq? true (value)) "(message) \(result: (dump (value))\)")
+(def-fn expect:ne value1 value2 message="expected not equal"
+    (assert (ne? (value1) (value2)) "(message): (dump (value1)) == (dump (value2))")
 )
 
-(def-fn expect:false value message
-    (assert (eqq? false (value)) "(message) \(result: (dump (value))\)")
+(def-fn expect:zero value message="expected 0"
+    (assert (zero? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:int value message
-    (assert (int? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:not-zero value message="expected not 0"
+    (assert (not (zero? (value))) "(message): (dump (value))")
 )
 
-(def-fn expect:str value message
-    (assert (str? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:true value message="expected true"
+    (assert (true? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:bool value message
-    (assert (bool? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:false value message="expected false"
+    (assert (false? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:float value message
-    (assert (float? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:int value message="expected integer"
+    (assert (int? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:array value message
-    (assert (array? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:str value message="expected string"
+    (assert (str? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:object value message
-    (assert (object? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:bool value message="expected boolean"
+    (assert (bool? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:map value message
-    (assert (map? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:number value message="expected number"
+    (assert (number? (value)) "(message): (dump (value))")
 )
 
-(def-fn expect:fn value message
-    (assert (fn? (value)) "(message) \(result: [(typeof (value))] (dump (value))\)")
+(def-fn expect:array value message="expected array"
+    (assert (array? (value)) "(message): (dump (value))")
+)
+
+(def-fn expect:map value message="expected map"
+    (assert (map? (value)) "(message): (dump (value))")
+)
+
+(def-fn expect:fn value message="expected function"
+    (assert (fn? (value)) "(message): (dump (value))")
+)
+
+(def-fn expect:type value type message="expected type"
+    (assert (eq? (typeof (value)) (type)) "(message): (type) != (typeof (value)): (dump (value))")
 )
 
 (def-fn test:run
-
     (set-fn "_def_echo" (get-fn "_echo"))
     (set-fn "_echo")
-    (def-fn ::echo message
-        (array:push (local.msg_echo) (message)))
+    (def-fn :echo message
+        (array:push (local.messages) "\x1B[97m> (message)\x1B[0m"))
 
     (set-fn "_def_print" (get-fn "_print"))
     (set-fn "_print")
-    (def-fn ::print message
-        (array:push (local.msg_print) (message)))
+    (def-fn :print message
+        (array:push (local.messages) "\x1B[93m> (message)\x1B[0m"))
 
     (set-fn "_def_trace" (get-fn "_trace"))
     (set-fn "_trace")
-    (def-fn ::trace message
-        (array:push (local.msg_trace) (message)))
+    (def-fn :trace message
+        (array:push (local.messages) "\x1B[90m> (message)\x1B[0m"))
 
     (set errors 0)
     (for func in (debug:fn "test_")
         (try
-            (set local.msg_echo (#))
-            (set local.msg_trace (#))
-            (def_print "(func) ... ")
+            (set messages [])
+            (def_print "(func)")
             ((func))
-            (def_print "🟢\n")
+            (def_print "\r✔ (func)\n")
 
         catch
-            (def_print "🔴 \x1B[31m(err)\x1B[0m\n")
+            (def_print "\r🔴 (func): \x1B[31m(err)\x1B[0m\n")
             (inc errors)
 
-            (when (len (local.msg_echo))
-                (for msg in (local.msg_echo)
-                    (def_echo "\x1B[97m(msg)\x1B[0m"))
-            )
-
-            (when (len (local.msg_trace))
-                (for msg in (local.msg_trace)
-                    (def_echo "\x1B[90m[trace] (msg)\x1B[0m"))
-            )
+            (for msg in (messages)
+                (def_echo (msg)))
         )
     )
 
     (set-fn "_echo" (get-fn "_def_echo"))
     (set-fn "_print" (get-fn "_def_print"))
     (set-fn "_trace" (get-fn "_def_trace"))
-
     (errors)
 )
 
