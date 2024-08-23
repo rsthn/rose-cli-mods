@@ -1,0 +1,44 @@
+# Configuration variables.
+USER xxx
+TOKEN xxx
+
+# Deployment settings.
+SOURCE https://{USER}:{TOKEN}@somewhere/user/repo.git
+TARGET {path::cwd}
+ENV dev-server
+
+# Pull code from repository into temporal dir.
+TEMP {path::append {path::cwd} tmp}
+EXEC git clone "{SOURCE}" "{TEMP}"
+
+# Copy all files.
+ECHO {clr 93} Applying partial update ... {clr 0}
+
+r0 {TEMP}/api/extensions
+DIRCOPY {TARGET}/api/extensions
+
+r0 {TEMP}/.deploy
+COPY {TARGET}
+
+r0 {TEMP}/version
+COPY {TARGET}
+
+# Configure.
+ECHO {clr 93} Configuring ... {clr 0}
+
+r0 {ENV}
+WRITE {TARGET}/api/rose-env
+WRITE {TARGET}/rose-env
+
+# Update dependencies.
+ECHO {clr 93} Updating dependencies (API only) ... {clr 0}
+PUSHD
+	CHDIR {TARGET}/api
+	EXEC composer update
+POPD
+
+# Clean temporal folder.
+RMDIR {TEMP}
+
+ECHO {clr 92} Version: {file::read {TARGET}/version} {clr 0}
+ECHO {clr 93} Finished {clr 0}
