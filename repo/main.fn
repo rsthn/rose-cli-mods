@@ -1,0 +1,356 @@
+
+(set root (path:dirname (args.0)))
+
+(def-fn get_status repo_path
+
+    (path:chdir (repo_path))
+    (set status (sys:shell "git status"))
+    (set status (lower (status)))
+
+    (set pull_required 1)
+    (set push_required 2)
+
+    (when (in? (status) "your branch is up to date with")
+        (set pull_required 0) )
+
+    (when (in? (status) "working tree clean")
+        (set push_required 0) )
+
+    (bit-or (pull_required) (push_required))
+)
+
+(def-fn scr_init line_width
+    (scr_reset {
+        empty_line (lpad (line_width) " " "")
+    })
+)
+
+(def-fn scr_reset scr
+    (set scr.lines []
+         scr.meta {}
+         scr.sx 0 scr.sy 0
+         scr.x 0 scr.y 0
+    )
+    (scr)
+)
+
+(def-fn scr_color scr value
+    (when-not (in? (scr.meta) (scr.y))
+        (set scr.meta.(scr.y) {}) )
+    (set scr.meta.(scr.y).(scr.x) "\e[(value)m")
+)
+
+(def-fn scr_write scr text
+
+    (set x (scr.x) y (scr.y))
+
+    (while (le? (len (scr.lines)) (y))
+        (array:push (scr.lines) (scr.empty_line)) )
+
+    (set line (scr.lines.(y)))
+
+    (set x2 (+ (x) (str:len (text))))
+    (set line (concat
+        (substr 0 (x) (line))
+        (text)
+        (substr (x2) (line))
+    ))
+
+    (set scr.lines.(y) (line))
+    (set scr.x (x2))
+)
+
+(def-fn scr_nl scr
+    (set scr.x (scr.sx))
+    (inc scr.y)
+)
+
+(def-fn scr_flush scr
+    (for y:line in (scr.lines)
+        (set output "")
+        (for x:col in (split (line))
+            (when (scr.meta.(y))
+                (when (scr.meta.(y).(x))
+                    (append output (scr.meta.(y).(x)))
+                )
+            )
+            (append output (col))
+        )
+        (echo (output))
+    )
+    (scr_reset (scr))
+)
+
+(when (lt? (len (args)) 2)
+    (echo "
+Usage:
+    repo add <name> [group]     Adds the repository <name> from current directory into the registry.
+    repo add * [group]          Adds all the repositories from current directory into the registry.
+    repo update <name> <group>  Moves the repository <name> to the specified <group>.
+    repo remove <name>          Removes the repository <name> from the registry.
+    repo cd <name>              Changes the current directory to the one of the repository <name>.
+    repo list [group]           Lists the repositories in the registry.
+    repo scan [group]           Scans any changes in the repositories.
+
+    repo width <number>         Sets the output line width.
+    repo col <number>           Sets the size of each column.
+    repo config                 Opens the config file to be edited.
+")
+    (stop)
+)
+
+(set cwd (path:cwd))
+(set is_dirty false)
+
+(set repos_file (path:append (root) "repos.json"))
+(set repos (json:parse (file:read (repos_file))))
+(when-not (repos)
+    (set repos {}) )
+
+(set conf_file (path:append (root) "config.json"))
+(set conf (json:parse (file:read (conf_file))))
+(when-not (conf)
+    (set conf { 
+        line_width 80
+        col_width 30
+    })
+)
+
+(print "\n")
+
+
+;; *****************************
+(switch (args.1)
+
+    ;; ***
+    case "add"
+        (when (lt? (len (args)) 3)
+            (echo "Usage:
+    repo add <name> [group]     Adds the repository <name> from current directory.
+    repo add * [group]          Adds all the repositories from current directory.")
+            (break) )
+
+        (set dirs [(args.2)])
+        (when (eq? "*" (args.2))
+            (set dirs (dir:dirs (path:resolve ".")) (dir.name))
+            (set dirs (map x in (dirs) (x.name))) )
+
+        (for dir in (dirs)
+
+            (when-not (path:exists (dir))
+                (echo (concat "\e[90m* directory not found: \e[0m" (dir) ))
+                (continue) )
+
+            (set is_git (path:exists (path:append (dir) ".git")))
+            (set is_svn (path:exists (path:append (dir) ".svn")))
+
+            (when-not (or (is_git) (is_svn))
+                (echo (concat "\e[90m* not a repository: \e[0m" (dir) ))
+                (continue) )
+
+            (when (and (in? (repos) (dir)) (or (null? (args.3)) (eq? (repos.(dir).group) (args.3))))
+                (echo (concat "\e[90m* already added: \e[0m" (dir) ))
+                (continue) )
+
+            (set repos.(dir) {
+                "group" (coalesce (args.3) "general")
+                "path" (path:resolve (dir))
+                "type" (? (is_git) "git" "svn")
+            })
+            (set is_dirty true)
+
+            (echo "✔ \e[97m" (dir) "\e[0m")
+        )
+
+    ;; ***
+    case "update"
+        (when (lt? (len (args)) 3)
+            (echo "Usage:
+    repo update <name> <group>  Moves the repository <name> to the specified <group>.")
+            (break) )
+
+        (set dir (args.2))
+        (when-not (in? (repos) (dir))
+            (echo (concat "\e[90m* not found: \e[0m" (dir) ))
+            (continue) )
+
+        (set repos.(dir).group (args.3))
+        (set is_dirty true)
+
+        (echo "✔ \e[97m" (dir) " → " (args.3) "\e[0m")
+
+    ;; ***
+    case "remove"
+        (when (lt? (len (args)) 3)
+            (echo "Usage:
+    repo remove <name>          Removes the repository <name> from the registry.")
+            (break) )
+
+        (when-not (in? (repos) (args.2))
+            (echo (concat "\e[90m* not found: \e[0m" (args.2) ))
+            (break) )
+
+        (map:del (repos) (args.2))
+        (set is_dirty true)
+
+        (echo "✔ \e[97m" (args.2) "\e[0m removed")
+
+    ;; ***
+    case "cd"
+        (when (lt? (len (args)) 3)
+            (echo "Usage:
+    repo cd <name>          Changes the current directory to the one of the repository <name>.")
+            (break) )
+
+        (when-not (in? (repos) (args.2))
+            (echo (concat "\e[90m* not found: \e[0m" (args.2) ))
+            (break) )
+
+        (set target_path ((repos.(args.2)).path))
+        (set target_path (str:replace "/" "\\" (target_path)))
+
+        (echo (target_path))
+        (break)
+
+    ;; ***
+    case "list"
+        (set grouped (groupify name:info in (repos) (info.group) { name (name) info (info) } ))
+        (set grouped (map:values (map a:b in (grouped) [(len (b)) (a) (b)])))
+        (set grouped (array:sort a b (grouped) (- (b.0) (a.0)) ))
+        (set grouped (mapify x (grouped) (x.1) (x.2)))
+
+        (set groups_per_page (div (conf.line_width) (conf.col_width))
+             num_groups (groups_per_page)
+             scr (scr_init (conf.line_width))
+        )
+
+        (for group:repos in (grouped)
+
+            (when-not (len (repos))
+                (continue) )
+
+            ;; filter by group if specified
+            (when (args.2)
+                (when-not (in? (group) (args.2))
+                    (continue) )
+            )
+
+            (scr_color (scr) "97")
+            (scr_write (scr) "* (group)")
+            (scr_nl (scr))
+            (scr_color (scr) "0")
+
+            (for idx:repo in (repos)
+                (scr_write (scr) (eq? (+ 1 (idx)) (len (repos)) "\\" "|"))
+                (scr_write (scr) "- ")
+                (scr_write (scr) (repo.name))
+                (scr_nl (scr))
+            )
+
+            (inc scr.sx (conf.col_width))
+            (set scr.x (scr.sx) scr.y 0)
+
+            (dec num_groups)
+            (when-not (num_groups)
+                (set num_groups (groups_per_page))
+                (scr_flush (scr))
+                (echo "")
+            )
+        )
+
+        (scr_flush (scr))
+
+    ;; ***
+    case "remove"
+        (echo "remove")
+        (echo "remove")
+
+    ;; ***
+    case "scan"
+        (set grouped (groupify name:info in (repos) (info.group) { name (name) info (info) } ))
+        (set grouped (map:values (map a:b in (grouped) [(len (b)) (a) (b)])))
+        (set grouped (array:sort a b (grouped) (- (b.0) (a.0)) ))
+        (set grouped (mapify x (grouped) (x.1) (x.2)))
+
+        (set groups_per_page (div (conf.line_width) (conf.col_width))
+             num_groups (groups_per_page)
+             scr (scr_init (conf.line_width))
+        )
+
+        (for group:repos in (grouped)
+
+            (when-not (len (repos))
+                (continue) )
+
+            ;; filter by group if specified
+            (when (args.2)
+                (when-not (in? (group) (args.2))
+                    (continue) )
+            )
+
+            (scr_color (scr) "96")
+            (scr_write (scr) "* (group)")
+            (scr_nl (scr))
+            (scr_color (scr) "0")
+
+            (for idx:repo in (repos)
+                (scr_write (scr) (eq? (+ 1 (idx)) (len (repos)) "\\" "|"))
+                (scr_write (scr) "- ")
+
+                (if (not (path:exists "(repo.info.path)/.git"))
+                    (scr_color (scr) "90")
+                else
+                    (set status (get_status (repo.info.path)))
+                    (if (eq? 3 (status))    (scr_color (scr) "91") ; pull & push
+                    elif (eq? 1 (status))   (scr_color (scr) "93") ; pull
+                    elif (eq? 2 (status))   (scr_color (scr) "95") ; push
+                    else                    (scr_color (scr) "92") ) ; up to date
+                )
+
+                (scr_write (scr) (repo.name))
+                (scr_color (scr) 0)
+                (scr_nl (scr))
+            )
+
+            (inc scr.sx (conf.col_width))
+            (set scr.x (scr.sx) scr.y 0)
+
+            (dec num_groups)
+            (when-not (num_groups)
+                (set num_groups (groups_per_page))
+                (scr_flush (scr))
+                (echo "")
+            )
+        )
+
+        (scr_flush (scr))
+
+    ;; ***
+    case "width"
+        (when (lt? (len (args)) 3)
+            (echo "Line width: \e[97m" (conf.line_width) "\e[0m")
+            (break) )
+
+        (set conf.line_width (int (args.2)))
+        (file:write (conf_file) (json:dump (conf)))
+        (echo "✔ Line width set to \e[97m" (conf.line_width) "\e[0m")
+
+    ;; ***
+    case "col"
+        (when (lt? (len (args)) 3)
+            (echo "Output column size: \e[97m" (conf.col_width) "\e[0m")
+            (break) )
+
+        (set conf.col_width (int (args.2)))
+        (file:write (conf_file) (json:dump (conf)))
+        (echo "✔ Output column size set to \e[97m" (conf.col_width) "\e[0m")
+
+    ;; ***
+    case "config"
+        (sys:exec 'code "(repos_file)"')
+)
+
+(when (is_dirty)
+    (file:write (repos_file) (json:dump (repos))) )
+
+(path:chdir (cwd))
