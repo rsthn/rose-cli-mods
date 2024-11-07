@@ -18,8 +18,16 @@
     (lines)
 )
 
+;; Converts to a markdown local anchor string.
+(def-fn md_anchor value
+    (set value (lower (value)))
+    (set value (str:replace " " "-" (value)))
+    (set value (re:replace "/[^A-Za-z0-9_-]+/" "" (value)))
+    (value)
+)
+
 ;; Returns formatted documentation for doc-strings in a given file.
-(def-fn getDocumentation filePath add_title=true add_desc=true add_back_link=true
+(def-fn getDocumentation filePath add_title=true add_desc=true add_back_link="back"
 
     (set fileData (file:read (filePath)))
     (set doc "")
@@ -33,7 +41,7 @@
 
     (set desc (re:match "/@desc \(?P<value>.+\)/" (fileData)))
 
-    (when (add_back_link)
+    (when (eq? "back" (add_back_link))
         (append doc "[&laquo; Go Back]\(./README.md\)\n"))
 
     (when (add_title)
@@ -101,7 +109,10 @@
     (# (title.value) (short) (doc))
 )
 
+
+;; -----------------------------
 ;; Entry point.
+
 (when (not (args.1))
     (print "Use: rose :vdocs <directory|file>")
     (stop))
@@ -110,18 +121,28 @@
 (when-not (path:exists (src))
     (throw "Source path not found: (args.1)"))
 
+
+;; -----------------------------
 ;; Process entire folder.
+
 (when (path:is-dir (src))
 
+    (set is_single (eq? "--single" (array:last (args))))
+
     (set names (&))
+    (set buffer (&))
 
     (for file (dir:files-recursive (src) "/\.php$/")
-        (set info (getDocumentation (file.path)))
+        (set info (getDocumentation (file.path) true true (? (is_single) "top" "back")))
         (when-not (info)
             (continue))
 
         (echo "✔ (info.0)")
-        (file:write "./docs/(info.1).md" (info.2))
+        (if (is_single)
+            (map:set (buffer) (info.1) (info.2))
+        else
+            (file:write "./docs/(info.1).md" (info.2))
+        )
 
         (map:set (names) (info.1) (info.0))
     )
@@ -129,20 +150,36 @@
     (file:remove "./docs/README.md")
 
     (set output "# Functions\n")
-    (for file (dir:files-recursive "./docs/")
-        (set name (array:last (split "-" (path:name (file.name)))))
+    (if (is_single)
+        (for name:docs in (buffer)
+            (when (in? (names) (name))
+                (set name (map:get (names) (name))))
+            (append output "- [(name)]\(#(md_anchor (name))\)\n")
+        )
 
-        (when (in? (names) (name))
-            (set name (map:get (names) (name))))
+        (append output "\n<br/><br/>\n")
 
-        (append output "- [(name)]\(./(file.name)\)\n")
+        (for name:docs in (buffer)
+            (append output "\n<br/><br/>\n\n")
+            (append output (docs))
+        )
+
+    else
+        (for file (dir:files-recursive "./docs/")
+            (set name (array:last (split "-" (path:name (file.name)))))
+            (when (in? (names) (name))
+                (set name (map:get (names) (name))))
+            (append output "- [(name)]\(./(file.name)\)\n")
+        )
     )
 
     (file:write "./docs/README.md" (output))
-    (print "✔ Documentation updated")
+    (print "\n✨ \e[97mDocumentation updated\e[0m")
     (stop)
 )
 
+
+;; -----------------------------
 ;; Process single file.
 
 (set is_full (eq? "--overwrite" (array:last (args))))
@@ -165,4 +202,4 @@
 (append data (info.2))
 (file:write (filename) (data))
 
-(print "✔ Documentation updated")
+(print "\n✨ \e[97mDocumentation updated\e[0m")
