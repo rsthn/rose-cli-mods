@@ -51,9 +51,9 @@
 
     (set x2 (+ (x) (str:len (text))))
     (set line (concat
-        (substr 0 (x) (line))
+        (str:sub 0 (x) (line))
         (text)
-        (substr (x2) (line))
+        (str:sub (x2) (line))
     ))
 
     (set scr.lines.(y) (line))

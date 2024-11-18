@@ -65,17 +65,17 @@
 
         ;; Grab special annotations and clean up each line.
         (for line (lines)
-            (set value (substr 3 (line)))
+            (set value (str:sub 3 (line)))
 
             (when (starts-with? "@code" (value))
                 (set target (meta.code))
-                (array:push (target) (substr 6 (value)))
+                (array:push (target) (str:sub 6 (value)))
                 (continue)
             )
 
             (when (starts-with? "@example" (value))
                 (set target (meta.example))
-                (array:push (target) (substr 9 (value)))
+                (array:push (target) (str:sub 9 (value)))
                 (continue)
             )
 
