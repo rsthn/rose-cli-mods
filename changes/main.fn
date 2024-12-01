@@ -16,12 +16,11 @@
     (echo "\x1B[90mLast version found is: v(version)\x1B[0m")
 )
 
-;; Get git changelog up to last publish.
+;; Get git changelog and get all marked commits up to the last version.
 (sys:exec "git log -n 50 >changes.txt")
-
 (set data (file:read "changes.txt"))
-(set found false)
 
+(set found false)
 (set blocks [])
 (set changes null)
 
@@ -38,10 +37,18 @@
         (continue)
     )
 
+    ;; A marked commit can be:
+    ;;  - [tag] text
+    ;;  [tag] text
+    ;;  - text
     (set tmp (re:match `/^- \\[([^\\]]+)\] (.+)$/` (i)))
     (when-not (tmp.0)
         (set tmp (re:match `/^\\[([^\\]]+)\] (.+)$/` (i)))
-        (when-not (tmp.0) (continue))
+        (when-not (tmp.0)
+            (set tmp (re:match `/^- (.+)$/` (i)))
+            (when-not (tmp.0) (continue))
+            (set tmp ["" "General" (tmp.1)])
+        )
     )
 
     (array:push (changes) { name (tmp.1) text (tmp.2) })
@@ -50,7 +57,8 @@
 (set changes [])
 (for (blocks)
     (for (i)
-        (array:push (changes) (i)) )
+        (array:push (changes) (i))
+    )
 )
 
 (when (and (not (first)) (not (found)))
