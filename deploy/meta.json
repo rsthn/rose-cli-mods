@@ -1,5 +1,5 @@
 {
-    "version": "1.0.2",
+    "version": "1.0.9",
     "preinstall": [
         "rose version ge? 5.0.6"
     ]
